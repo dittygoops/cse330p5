@@ -79,13 +79,40 @@ static bool open_usb(void)
         return false;
     }
 
-    // Safter printk in open_usb()
-    const char *disk_name = "unknown_disk";
-    // Check both bdevice AND bdevice->bd_disk before accessing disk_name
-    if (bdevice && bdevice->bd_disk && bdevice->bd_disk->disk_name) {
-        disk_name = bdevice->bd_disk->disk_name;
+    // Inside open_usb, replace the previous "success" printk block:
+    const char *disk_name_str = "unknown_disk_ptr";
+    const char *device_str = device ? device : "null_device_param"; // Check device param first
+
+    // Check bdevice and bd_disk pointers
+    if (bdevice && bdevice->bd_disk) {
+        // Check disk_name pointer itself
+        if (bdevice->bd_disk->disk_name) {
+            // As an extra check, try reading the first byte carefully
+            // This uses probe_kernel_read, requires #include <linux/uaccess.h>
+            char first_char;
+            // Make sure uaccess.h is included at the top of the file!
+            if (probe_kernel_read(&first_char, bdevice->bd_disk->disk_name, 1) == 0) {
+                // Read was successful, pointer is likely valid memory
+                disk_name_str = bdevice->bd_disk->disk_name;
+                // Check for empty string just in case
+                if (first_char == '\0') {
+                    disk_name_str = "empty_disk_name";
+                }
+            } else {
+                // Read failed, pointer points to bad memory!
+                disk_name_str = "invalid_disk_name_ptr";
+                printk(KERN_WARNING "kmod_main: Warning: bdevice->bd_disk->disk_name pointer (%p) is invalid!\n",
+                    bdevice->bd_disk->disk_name);
+            }
+        } else {
+            disk_name_str = "null_disk_name_ptr";
+        }
+    } else {
+        disk_name_str = "null_bd_disk_ptr";
     }
-    printk(KERN_INFO "kmod_main: success: opened %s (%s) as a block device.\n", disk_name, device);
+
+    // Now print using the safely determined strings
+    printk(KERN_INFO "kmod_main: success: opened %s (%s) as a block device.\n", disk_name_str, device_str);
 
 
     // // Removed bioset creation
