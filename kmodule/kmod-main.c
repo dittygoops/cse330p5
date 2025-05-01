@@ -79,36 +79,27 @@ static bool open_usb(void)
         return false;
     }
 
-    // Inside open_usb, replace the previous "success" printk block:
+    // Inside open_usb, replace the probe_kernel_read block with this simpler check:
     const char *disk_name_str = "unknown_disk_ptr";
-    const char *device_str = device ? device : "null_device_param"; // Check device param first
+    const char *device_str = device ? device : "null_device_param"; // Check device param
 
     // Check bdevice and bd_disk pointers
     if (bdevice && bdevice->bd_disk) {
-        // Check disk_name pointer itself
+        // Check disk_name pointer itself is not NULL
         if (bdevice->bd_disk->disk_name) {
-            // As an extra check, try reading the first byte carefully
-            // This uses probe_kernel_read, requires #include <linux/uaccess.h>
-            char first_char;
-            // Make sure uaccess.h is included at the top of the file!
-            if (probe_kernel_read(&first_char, bdevice->bd_disk->disk_name, 1) == 0) {
-                // Read was successful, pointer is likely valid memory
-                disk_name_str = bdevice->bd_disk->disk_name;
-                // Check for empty string just in case
-                if (first_char == '\0') {
-                    disk_name_str = "empty_disk_name";
-                }
-            } else {
-                // Read failed, pointer points to bad memory!
-                disk_name_str = "invalid_disk_name_ptr";
-                printk(KERN_WARNING "kmod_main: Warning: bdevice->bd_disk->disk_name pointer (%p) is invalid!\n",
-                    bdevice->bd_disk->disk_name);
+            // Pointer is not NULL, let's try using it.
+            disk_name_str = bdevice->bd_disk->disk_name;
+            // Add check for empty string just in case (optional but safe)
+            if (disk_name_str[0] == '\0') {
+                disk_name_str = "[empty_disk_name]";
             }
         } else {
-            disk_name_str = "null_disk_name_ptr";
+            // The disk_name pointer inside the structure was NULL
+            disk_name_str = "[null_disk_name_ptr]";
         }
     } else {
-        disk_name_str = "null_bd_disk_ptr";
+        // The bd_disk pointer itself was NULL
+        disk_name_str = "[null_bd_disk_ptr]";
     }
 
     // Now print using the safely determined strings
