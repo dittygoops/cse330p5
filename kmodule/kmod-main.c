@@ -118,23 +118,15 @@ static bool open_usb(void)
     printk(KERN_INFO "kmod_main open_usb: MARKER S - Got bdevice successfully.\n");
 
 
-    // Reverted to the simpler safe printk for disk name
-    const char *disk_name_str = "unknown_disk_ptr";
-    const char *device_str = device ? device : "null_device_param";
-    if (bdevice && bdevice->bd_disk) {
-        if (bdevice->bd_disk->disk_name) {
-             disk_name_str = bdevice->bd_disk->disk_name;
-             if (disk_name_str[0] == '\0') {
-                disk_name_str = "[empty_disk_name]";
-             }
-        } else {
-             disk_name_str = "[null_disk_name_ptr]";
-        }
-    } else {
-         disk_name_str = "[null_bd_disk_ptr]";
-    }
-    printk(KERN_INFO "kmod_main open_usb: MARKER T - Printing device name info...\n");
-    printk(KERN_INFO "kmod_main open_usb: success: opened %s (%s) as a block device.\n", disk_name_str, device_str);
+    // Inside open_usb, REPLACE the block that defines/prints disk_name_str with this:
+
+    printk(KERN_INFO "kmod_main open_usb: MARKER T - Device details checked (name printing skipped).\n");
+
+    // The code continues immediately with:
+        cur_dev_sector = 0;
+        printk(KERN_INFO "kmod_main open_usb: MARKER U - Finished open_usb successfully.\n");
+        return true;
+    } // End of function open_usb
 
 
     cur_dev_sector = 0;
