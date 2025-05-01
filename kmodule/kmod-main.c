@@ -122,13 +122,6 @@ static bool open_usb(void)
 
     printk(KERN_INFO "kmod_main open_usb: MARKER T - Device details checked (name printing skipped).\n");
 
-    // The code continues immediately with:
-        cur_dev_sector = 0;
-        printk(KERN_INFO "kmod_main open_usb: MARKER U - Finished open_usb successfully.\n");
-        return true;
-    } // End of function open_usb
-
-
     cur_dev_sector = 0;
     printk(KERN_INFO "kmod_main open_usb: MARKER U - Finished open_usb successfully.\n");
     return true;
