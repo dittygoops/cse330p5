@@ -21,6 +21,10 @@
 #include <linux/uaccess.h> // Needed for access_ok (although primarily used in ioctl)
 #include <linux/err.h>     // Needed for IS_ERR, PTR_ERR
 
+#include <linux/fs.h>      // For file_inode, S_ISBLK etc.
+#include <linux/sched.h>   // For TASK_RUNNING etc (maybe needed by headers below)
+#include <linux/blkdev.h>  // For I_BDEV, bd_disk etc.
+
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Your Name/Group"); // Fill in author
@@ -51,74 +55,90 @@ long rw_usb(char* data, unsigned int size, unsigned int offset, bool flag);
 
 static bool open_usb(void)
 {
-    int ret = 0;
-    /* Open a file for the path of the usb */
-    printk(KERN_INFO "kmod_main: Attempting to open block device: %s\n", device);
-    // Use FMODE_READ | FMODE_WRITE instead of BLK_OPEN_* flags
-    usb_file = filp_open(device, O_RDWR, 0); // Use filp_open for general file path opening
+    int file_err = 0; // Use local variable for filp_open error
+    struct inode *inode = NULL; // Declare inode pointer
+
+    printk(KERN_INFO "kmod_main open_usb: MARKER A - Entering function.\n");
+    printk(KERN_INFO "kmod_main open_usb: MARKER B - Attempting filp_open for: %s\n", device);
+    usb_file = filp_open(device, O_RDWR, 0);
+    // Immediately log the result, even if it's an error pointer
+    printk(KERN_INFO "kmod_main open_usb: MARKER C - filp_open returned %p\n", usb_file);
+
     if (IS_ERR(usb_file)) {
-        ret = PTR_ERR(usb_file);
-        printk(KERN_ERR "kmod_main: error %d: failed to open the device file (%s).\n", ret, device);
+        file_err = PTR_ERR(usb_file);
+        printk(KERN_ERR "kmod_main open_usb: MARKER D - filp_open error %d for (%s).\n", file_err, device);
         usb_file = NULL;
         return false;
     }
+    printk(KERN_INFO "kmod_main open_usb: MARKER E - filp_open check passed.\n");
 
-    // Check if it's a block device file
-     if (!S_ISBLK(file_inode(usb_file)->i_mode)) {
-        printk(KERN_ERR "kmod_main: error: specified path (%s) is not a block device.\n", device);
+    printk(KERN_INFO "kmod_main open_usb: MARKER F - Getting inode via file_inode...\n");
+    inode = file_inode(usb_file); // Get inode once
+    printk(KERN_INFO "kmod_main open_usb: MARKER G - file_inode returned %p\n", inode);
+    if (!inode) { // Check if inode retrieval worked
+         printk(KERN_ERR "kmod_main open_usb: MARKER H - Failed to get inode from file (%s).\n", device);
+         filp_close(usb_file, NULL);
+         usb_file = NULL;
+         return false;
+    }
+    printk(KERN_INFO "kmod_main open_usb: MARKER I - Got inode successfully.\n");
+
+
+    printk(KERN_INFO "kmod_main open_usb: MARKER J - Checking S_ISBLK...\n");
+    if (!S_ISBLK(inode->i_mode)) {
+        printk(KERN_ERR "kmod_main open_usb: MARKER K - Path (%s) is not a block device.\n", device);
         filp_close(usb_file, NULL);
         usb_file = NULL;
         return false;
     }
+    printk(KERN_INFO "kmod_main open_usb: MARKER L - File type is block device.\n");
 
-    bdevice = I_BDEV(file_inode(usb_file)->i_mapping->host);
+
+    printk(KERN_INFO "kmod_main open_usb: MARKER M - Checking inode mapping/host...\n");
+    // Ensure mapping and host are valid before calling I_BDEV
+    if (!inode->i_mapping || !inode->i_mapping->host) {
+         printk(KERN_ERR "kmod_main open_usb: MARKER N - Inode mapping or host is NULL for (%s).\n", device);
+         filp_close(usb_file, NULL);
+         usb_file = NULL;
+         return false;
+    }
+    printk(KERN_INFO "kmod_main open_usb: MARKER O - Inode mapping/host look ok.\n");
+
+
+    printk(KERN_INFO "kmod_main open_usb: MARKER P - Getting bdevice via I_BDEV...\n");
+    bdevice = I_BDEV(inode->i_mapping->host);
+    printk(KERN_INFO "kmod_main open_usb: MARKER Q - I_BDEV returned %p\n", bdevice); // Log the return value
+
     if (!bdevice) {
-        printk(KERN_ERR "kmod_main: error: could not get block_device from file (%s).\n", device);
+        printk(KERN_ERR "kmod_main open_usb: MARKER R - Failed to get block_device from file (%s).\n", device);
         filp_close(usb_file, NULL);
         usb_file = NULL;
         return false;
     }
+    printk(KERN_INFO "kmod_main open_usb: MARKER S - Got bdevice successfully.\n");
 
-    // Inside open_usb, replace the probe_kernel_read block with this simpler check:
+
+    // Reverted to the simpler safe printk for disk name
     const char *disk_name_str = "unknown_disk_ptr";
-    const char *device_str = device ? device : "null_device_param"; // Check device param
-
-    // Check bdevice and bd_disk pointers
+    const char *device_str = device ? device : "null_device_param";
     if (bdevice && bdevice->bd_disk) {
-        // Check disk_name pointer itself is not NULL
         if (bdevice->bd_disk->disk_name) {
-            // Pointer is not NULL, let's try using it.
-            disk_name_str = bdevice->bd_disk->disk_name;
-            // Add check for empty string just in case (optional but safe)
-            if (disk_name_str[0] == '\0') {
+             disk_name_str = bdevice->bd_disk->disk_name;
+             if (disk_name_str[0] == '\0') {
                 disk_name_str = "[empty_disk_name]";
-            }
+             }
         } else {
-            // The disk_name pointer inside the structure was NULL
-            disk_name_str = "[null_disk_name_ptr]";
+             disk_name_str = "[null_disk_name_ptr]";
         }
     } else {
-        // The bd_disk pointer itself was NULL
-        disk_name_str = "[null_bd_disk_ptr]";
+         disk_name_str = "[null_bd_disk_ptr]";
     }
+    printk(KERN_INFO "kmod_main open_usb: MARKER T - Printing device name info...\n");
+    printk(KERN_INFO "kmod_main open_usb: success: opened %s (%s) as a block device.\n", disk_name_str, device_str);
 
-    // Now print using the safely determined strings
-    printk(KERN_INFO "kmod_main: success: opened %s (%s) as a block device.\n", disk_name_str, device_str);
 
-
-    // // Removed bioset creation
-    // usb_bio_set = bioset_create(1, 0, BIOSET_NEED_BVECS); // Pool size 1, minimal flags
-    // if (!usb_bio_set) {
-    //     printk(KERN_ERR "kmod_main: error: failed to create bio_set.\n");
-    //     filp_close(usb_file, NULL);
-    //     usb_file = NULL;
-    //     bdevice = NULL;
-    //     return false;
-    // }
-    // printk(KERN_INFO "kmod_main: success: created bioset.\n");
-
-    cur_dev_sector = 0; // Initialize current sector offset
-
+    cur_dev_sector = 0;
+    printk(KERN_INFO "kmod_main open_usb: MARKER U - Finished open_usb successfully.\n");
     return true;
 }
 
@@ -302,26 +322,39 @@ static void close_usb(void)
 
 static int __init kmod_init(void)
 {
-    pr_info("kmod_main: Loading kmod module...\n"); // Use standard pr_info
+    int ret = 0; // Use int for return code consistency
+    printk(KERN_INFO "kmod_main: Loading kmod module...\n"); // <<< MARKER 1
 
-    // Initialize mutex before using it
+    printk(KERN_INFO "kmod_main: Initializing mutex...\n"); // <<< MARKER 2
     mutex_init(&kmod_usb_mutex);
+    printk(KERN_INFO "kmod_main: Mutex initialized.\n"); // <<< MARKER 3
 
-
+    printk(KERN_INFO "kmod_main: Calling open_usb...\n"); // <<< MARKER 4
     if (!open_usb()) {
-        pr_err("kmod_main: Failed to open USB block device %s\n", device); // Use pr_err
-        return -ENODEV; // Standard error code for no such device
+        // Error message is printed inside open_usb
+        ret = -ENODEV;
+        goto exit; // Use goto for consistent exit path
     }
+    printk(KERN_INFO "kmod_main: open_usb finished successfully.\n"); // <<< MARKER 5
 
-    // Initialize the IOCTL interface AFTER successfully opening the USB device
+    printk(KERN_INFO "kmod_main: Calling kmod_ioctl_init...\n"); // <<< MARKER 6
     if (!kmod_ioctl_init()) {
          pr_err("kmod_main: Failed to initialize IOCTL interface\n");
          close_usb(); // Clean up USB resources if IOCTL init fails
-         return -EFAULT; // Or appropriate error from kmod_ioctl_init
+         ret = -EFAULT;
+         goto exit_close_usb; // Use goto for consistent exit path needing cleanup
     }
+    printk(KERN_INFO "kmod_main: kmod_ioctl_init finished successfully.\n"); // <<< MARKER 7
 
-    pr_info("kmod_main: Kernel module loaded successfully.\n");
-    return 0;
+
+    printk(KERN_INFO "kmod_main: Kernel module loaded successfully.\n"); // <<< MARKER 8
+    return 0; // Success
+
+exit_close_usb: // Cleanup point if ioctl_init failed
+    close_usb();
+exit: // Common exit point
+    printk(KERN_ERR "kmod_main: Module load failed with error %d\n", ret);
+    return ret;
 }
 
 static void __exit kmod_fini(void)
