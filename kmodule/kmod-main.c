@@ -79,8 +79,13 @@ static bool open_usb(void)
         return false;
     }
 
-    printk(KERN_INFO "kmod_main: success: opened %s (%s) as a block device.\n",
-           (bdevice->bd_disk ? bdevice->bd_disk->disk_name : "unknown disk"), device);
+    // Safter printk in open_usb()
+    const char *disk_name = "unknown_disk";
+    // Check both bdevice AND bdevice->bd_disk before accessing disk_name
+    if (bdevice && bdevice->bd_disk && bdevice->bd_disk->disk_name) {
+        disk_name = bdevice->bd_disk->disk_name;
+    }
+    printk(KERN_INFO "kmod_main: success: opened %s (%s) as a block device.\n", disk_name, device);
 
 
     // // Removed bioset creation
