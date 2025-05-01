@@ -53,78 +53,30 @@ void kmod_ioctl_teardown(void);
 // REMOVED static keyword - needs to be visible to kmod-ioctl.c
 long rw_usb(char* data, unsigned int size, unsigned int offset, bool flag);
 
+// Replace the entire open_usb function with this temporary version:
 static bool open_usb(void)
 {
-    int file_err = 0; // Use local variable for filp_open error
-    struct inode *inode = NULL; // Declare inode pointer
-
-    printk(KERN_INFO "kmod_main open_usb: MARKER A - Entering function.\n");
+    int file_err = 0;
+    printk(KERN_INFO "kmod_main open_usb: MARKER A - Entering function (SIMPLIFIED).\n");
     printk(KERN_INFO "kmod_main open_usb: MARKER B - Attempting filp_open for: %s\n", device);
     usb_file = filp_open(device, O_RDWR, 0);
-    // Immediately log the result, even if it's an error pointer
     printk(KERN_INFO "kmod_main open_usb: MARKER C - filp_open returned %p\n", usb_file);
 
     if (IS_ERR(usb_file)) {
         file_err = PTR_ERR(usb_file);
         printk(KERN_ERR "kmod_main open_usb: MARKER D - filp_open error %d for (%s).\n", file_err, device);
         usb_file = NULL;
-        return false;
+        return false; // Return false on error
     }
-    printk(KERN_INFO "kmod_main open_usb: MARKER E - filp_open check passed.\n");
 
-    printk(KERN_INFO "kmod_main open_usb: MARKER F - Getting inode via file_inode...\n");
-    inode = file_inode(usb_file); // Get inode once
-    printk(KERN_INFO "kmod_main open_usb: MARKER G - file_inode returned %p\n", inode);
-    if (!inode) { // Check if inode retrieval worked
-         printk(KERN_ERR "kmod_main open_usb: MARKER H - Failed to get inode from file (%s).\n", device);
-         filp_close(usb_file, NULL);
-         usb_file = NULL;
-         return false;
-    }
-    printk(KERN_INFO "kmod_main open_usb: MARKER I - Got inode successfully.\n");
-
-
-    printk(KERN_INFO "kmod_main open_usb: MARKER J - Checking S_ISBLK...\n");
-    if (!S_ISBLK(inode->i_mode)) {
-        printk(KERN_ERR "kmod_main open_usb: MARKER K - Path (%s) is not a block device.\n", device);
-        filp_close(usb_file, NULL);
-        usb_file = NULL;
-        return false;
-    }
-    printk(KERN_INFO "kmod_main open_usb: MARKER L - File type is block device.\n");
-
-
-    printk(KERN_INFO "kmod_main open_usb: MARKER M - Checking inode mapping/host...\n");
-    // Ensure mapping and host are valid before calling I_BDEV
-    if (!inode->i_mapping || !inode->i_mapping->host) {
-         printk(KERN_ERR "kmod_main open_usb: MARKER N - Inode mapping or host is NULL for (%s).\n", device);
-         filp_close(usb_file, NULL);
-         usb_file = NULL;
-         return false;
-    }
-    printk(KERN_INFO "kmod_main open_usb: MARKER O - Inode mapping/host look ok.\n");
-
-
-    printk(KERN_INFO "kmod_main open_usb: MARKER P - Getting bdevice via I_BDEV...\n");
-    bdevice = I_BDEV(inode->i_mapping->host);
-    printk(KERN_INFO "kmod_main open_usb: MARKER Q - I_BDEV returned %p\n", bdevice); // Log the return value
-
-    if (!bdevice) {
-        printk(KERN_ERR "kmod_main open_usb: MARKER R - Failed to get block_device from file (%s).\n", device);
-        filp_close(usb_file, NULL);
-        usb_file = NULL;
-        return false;
-    }
-    printk(KERN_INFO "kmod_main open_usb: MARKER S - Got bdevice successfully.\n");
-
-
-    // Inside open_usb, REPLACE the block that defines/prints disk_name_str with this:
-
-    printk(KERN_INFO "kmod_main open_usb: MARKER T - Device details checked (name printing skipped).\n");
-
+    // --- Temporarily skip all other checks and bdevice retrieval ---
+    printk(KERN_INFO "kmod_main open_usb: MARKER Z - SKIPPING inode/bdev checks (SIMPLIFIED).\n");
+    bdevice = NULL; // Make sure bdevice is NULL as we didn't get it
     cur_dev_sector = 0;
-    printk(KERN_INFO "kmod_main open_usb: MARKER U - Finished open_usb successfully.\n");
-    return true;
+
+    // Do NOT close the file here if open succeeded, kmod_init/close_usb will handle it.
+    printk(KERN_INFO "kmod_main open_usb: MARKER U - Finished open_usb successfully (SIMPLIFIED).\n");
+    return true; // Return true, pretending we succeeded
 }
 
 // API to read/write to the attached USB device
