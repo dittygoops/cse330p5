@@ -153,7 +153,7 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
                     return ret;
                 }
 
-                current_offset += rwoffset_request.size + ret;
+                current_offset += rwoffset_request.offset + ret;
             } else {
                 /* READOFFSET */
                 //TODO
@@ -170,7 +170,7 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
                     return -EFAULT;
                 }
 
-                current_offset += rwoffset_request.size + ret;
+                current_offset += rwoffset_request.offset + ret;
             }
             
             vfree(kernbuf);
