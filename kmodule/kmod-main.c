@@ -57,8 +57,8 @@ static bool open_usb(void)
     }
     printk("success: opened %s as a block device.\n", bdevice->bd_disk->disk_name);
 
-    usb_bio = bio_alloc(bdevice, 256, REQ_OP_WRITE, GFP_NOIO);
-    if (!usb_bio || IS_ERR(usb_bio)) {
+    usb_bio = bio_alloc(GFP_KERNEL, 1);
+    if (!usb_bio) {
         printk("error: failed to allocate a bio structure.\n");
         fput(usb_file);
         return false;
