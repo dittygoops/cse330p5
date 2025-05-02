@@ -128,7 +128,7 @@ long rw_usb(
             return -1; // Error during bio submission
         }
 
-        bio_reset(usb_bio); // Reset the bio for the next iteration
+        bio_reset(usb_bio, bdevice, GFP_NOIO); // Reset the bio for the next iteration
 
         processed += chunk_size; // Update total processed bytes
         remaining -= chunk_size; // Decrease remaining bytes
