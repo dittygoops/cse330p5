@@ -155,6 +155,7 @@ long rw_usb(
     blk_opf_t current_opf;
     struct page *data_page = NULL;
     unsigned int offset_in_page = 0;
+    int add_page_ret = 0; // <<< DECLARED HERE
 
     printk(KERN_DEBUG "rw_usb: Entered: size=%u, offset=%u, flag=%d\n", size, offset, flag); // <<< RW_USB MARKER 1
 
@@ -202,9 +203,8 @@ long rw_usb(
          if (IS_ERR_OR_NULL(bio)) {
              long bio_err = bio ? PTR_ERR(bio) : -ENOMEM;
              printk(KERN_ERR "rw_usb: error: failed to allocate bio (ret = %ld).\n", bio_err);
-             // Don't unlock mutex here, let it fall through to the end
-             total_processed = bio_err; // Store error to return
-             goto out; // Go to cleanup
+             total_processed = bio_err;
+             goto out;
          }
          printk(KERN_DEBUG "rw_usb: bio allocated: %p\n", bio); // <<< RW_USB MARKER 7
 
@@ -218,7 +218,7 @@ long rw_usb(
          data_page = vmalloc_to_page(data + processed);
          if (!data_page) {
              printk(KERN_ERR "rw_usb: error: failed to get page for vmalloc address %p\n", data + processed);
-             bio_put(bio); // Free bio before unlock/return
+             bio_put(bio);
              total_processed = -EFAULT;
              goto out;
          }
@@ -229,7 +229,7 @@ long rw_usb(
 
 
          printk(KERN_DEBUG "rw_usb: Adding page %p to bio for %u bytes at offset %u...\n", data_page, bytes_in_chunk, offset_in_page); // <<< RW_USB MARKER 13
-         add_page_ret = bio_add_page(bio, data_page, bytes_in_chunk, offset_in_page);
+         add_page_ret = bio_add_page(bio, data_page, bytes_in_chunk, offset_in_page); // Use declared variable
          if (add_page_ret != bytes_in_chunk) {
                 printk(KERN_ERR "rw_usb: Error: bio_add_page added %d bytes, expected %u\n", add_page_ret, bytes_in_chunk);
                 bio_put(bio);
@@ -247,7 +247,7 @@ long rw_usb(
         if (bio_ret < 0 && bio_ret != -EOPNOTSUPP) {
              printk(KERN_ERR "rw_usb: error: submit_bio_wait failed (ret = %d) for sector %llu\n", bio_ret, bio->bi_iter.bi_sector);
              bio_put(bio);
-             total_processed = (total_processed > 0) ? total_processed : bio_ret; // Keep partial success if any
+             total_processed = (total_processed > 0) ? total_processed : bio_ret;
              goto out;
         } else if (bio_ret == -EOPNOTSUPP) {
              printk(KERN_WARNING "rw_usb: Warning: Operation not supported (ret = %d) for sector %llu\n", bio_ret, bio->bi_iter.bi_sector);
@@ -255,21 +255,19 @@ long rw_usb(
              total_processed = (total_processed > 0) ? total_processed : bio_ret;
              goto out;
         }
-         // Success path from submit_bio_wait (bio_ret is 0)
 
-        bio_put(bio); // Free the bio after successful use
-        bio = NULL; // Avoid double free in case of error later
+        bio_put(bio);
+        bio = NULL;
 
         processed += bytes_in_chunk;
         remaining -= bytes_in_chunk;
         total_processed += bytes_in_chunk;
-        current_sector++; // Move to next sector for next chunk
+        current_sector++;
 
          printk(KERN_DEBUG "rw_usb: Loop end: processed=%u, remaining=%u, next_sector=%u\n", processed, remaining, current_sector); // <<< RW_USB MARKER 17
 
     } // end while (remaining > 0)
 
-    // Update the global current offset if operation was successful and sequential
     if (offset == (unsigned int)-1 && total_processed == size) {
          cur_dev_sector = current_sector;
          printk(KERN_DEBUG "rw_usb: Updated cur_dev_sector to %u\n", cur_dev_sector); // <<< RW_USB MARKER 18a
@@ -279,7 +277,6 @@ long rw_usb(
      }
 
 out:
-    // If bio is not NULL here, it means an error happened after allocation but before bio_put
     if (bio) {
         bio_put(bio);
     }
