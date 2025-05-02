@@ -34,7 +34,6 @@
 static dev_t            dev = 0;
 static struct class*    kmod_class;
 static struct cdev      kmod_cdev;
-static unsigned int     current_offset = 0;
 
 /* Buffers for different operation requests */
 struct block_rw_ops rw_request;
@@ -47,7 +46,6 @@ bool kmod_ioctl_init(void);
 void kmod_ioctl_teardown(void);
 
 static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
-    long ret = 0;
     char* kernbuf;
 
     switch (cmd)
@@ -69,7 +67,7 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
             
             if (!kernbuf) {
                 printk("error: could not allocate memory for the write operation.\n");
-                return -ENOMEM;
+                return -1;
             }
 
             /* Perform the block operation */
@@ -80,34 +78,21 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
                 if (copy_from_user(kernbuf, rw_request.data, rw_request.size)) {
                     printk(KERN_ERR "kmod_ioctl: BWRITE - Error copying data from user.\n");
                     vfree(kernbuf);
-                    return -EFAULT;
+                    return -1;
                 }
             //     TODO: Call rw_usb()
-                ret = rw_usb(kernbuf, rw_request.size, current_offset, true); // 1 for write
-                if (ret < 0) {
-                     printk(KERN_ERR "kmod_ioctl: BWRITE - rw_usb failed with error %d\n", ret);
-                     vfree(kernbuf);
-                     return ret; // Propagate error
-                }
-
-                current_offset += ret;
+                rw_usb(kernbuf, rw_request.size, -1, true);
             } else {
             //     /* READ */
             //     TODO: Call rw_usb()
-                ret = rw_usb(kernbuf, rw_request.size, current_offset, false); // 0 for read
-                if (ret < 0) {
-                    printk(KERN_ERR "kmod_ioctl: BREAD - rw_usb failed with error %d\n", ret);
-                    vfree(kernbuf);
-                    return ret; // Propagate error
-                }
+                rw_usb(kernbuf, rw_request.size, -1, false);
+
             //     TODO: Use copy_to_user() to transfer rw_request.size bytes 
-                if (copy_to_user(rw_request.data, kernbuf, ret /* or req_size */)) {
+                if (copy_to_user(rw_request.data, kernbuf, rw_request.size)) {
                     printk(KERN_ERR "kmod_ioctl: BREAD - Error copying data to user.\n");
                     vfree(kernbuf);
-                    return -EFAULT;
+                    return -1;
                 }
-   
-                current_offset += ret;
             }
 
             vfree(kernbuf);
@@ -119,7 +104,7 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
             /* Get request from user */
             if (copy_from_user((void*) &rwoffset_request, (void*) arg, sizeof(struct block_rwoffset_ops))) {
                 printk("Error: Incorrect request parameters.\n");
-                return -EINVAL;
+                return -1;
             }
 
             /* Debugging */
@@ -133,7 +118,7 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
             kernbuf = vmalloc(rwoffset_request.size);
             if (!kernbuf) {
                 printk(KERN_ERR "kmod_ioctl: BREADOFFSET/BWRITEOFFSET - Error allocating kernel buffer (vmalloc).\n");
-                return -ENOMEM;
+                return -1;
             }
 
             /* Perform the block operation */
@@ -143,34 +128,21 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
                 if (copy_from_user(kernbuf, rwoffset_request.data, rwoffset_request.size)) {
                     printk(KERN_ERR "kmod_ioctl: BWRITEOFFSET - Error copying data from user.\n");
                     vfree(kernbuf);
-                    return -EFAULT;
+                    return -1;
                 }
 
-                ret = rw_usb(kernbuf, rwoffset_request.size, rwoffset_request.offset, true); // 1 for write
-                if (ret < 0) {
-                    printk(KERN_ERR "kmod_ioctl: BWRITEOFFSET - rw_usb failed with error %d\n", ret);
-                    vfree(kernbuf);
-                    return ret;
-                }
-
-                current_offset += rwoffset_request.offset + ret;
+                rw_usb(kernbuf, rwoffset_request.size, rwoffset_request.offset, true); // 1 for write
             } else {
                 /* READOFFSET */
                 //TODO
-                ret = rw_usb(kernbuf, rwoffset_request.size, rwoffset_request.offset, false); // 0 for read
-                if (ret < 0) {
-                    printk(KERN_ERR "kmod_ioctl: BREADOFFSET - rw_usb failed with error %d\n", ret);
-                    vfree(kernbuf);
-                    return ret;
-                }
+                rw_usb(kernbuf, rwoffset_request.size, rwoffset_request.offset, false); // 0 for read
+    
 
-                if (copy_to_user(rwoffset_request.data, kernbuf, ret /* or req_size */)) {
+                if (copy_to_user(rwoffset_request.data, kernbuf,  rwoffset_request.size)) {
                     printk(KERN_ERR "kmod_ioctl: BREADOFFSET - Error copying data to user.\n");
                     vfree(kernbuf);
-                    return -EFAULT;
+                    return -1;
                 }
-
-                current_offset += rwoffset_request.offset + ret;
             }
             
             vfree(kernbuf);

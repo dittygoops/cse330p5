@@ -65,7 +65,7 @@ static long kmod_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
             kernbuf = (char*) vmalloc(rw_request.size);
             // kernbuf = (char*) kmalloc(rw_request.size);
             
-            if (IS_ERR(kernbuf)) {
+            if (!kernbuf) {
                 printk("error: could not allocate memory for the write operation.\n");
                 return -1;
             }
